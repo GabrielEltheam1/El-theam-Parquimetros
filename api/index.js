@@ -1,5 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '4mb',
+    },
+  },
+};
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
@@ -17,6 +25,8 @@ function json(res, data, status = 200) {
 }
 
 async function parseBody(req) {
+  // In Vercel serverless, body may already be parsed
+  if (req.body && typeof req.body === 'object') return req.body;
   return new Promise((resolve) => {
     let body = '';
     req.on('data', c => body += c);
@@ -103,6 +113,7 @@ export default async function handler(req, res) {
 
   if (path === '/cambios' && req.method === 'POST') {
     const { fecha, parquimetroId, bateriaEntraId, bateriaSaleId } = body;
+    console.log('POST /cambios body:', JSON.stringify({ fecha, parquimetroId, bateriaEntraId, bateriaSaleId }));
     if (!fecha || !parquimetroId || !bateriaEntraId) return json(res, { error: 'Faltan campos' }, 400);
     const id = Date.now().toString();
     const { data, error } = await supabase.from('cambios').insert({
