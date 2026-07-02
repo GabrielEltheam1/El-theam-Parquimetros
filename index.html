@@ -322,6 +322,7 @@
   <div class="nav-tab" onclick="showPage('mapaCalor')">Mapa de Calor</div>
   <div class="nav-tab" onclick="showPage('mensual')">Mensual</div>
   <div class="nav-tab" onclick="showPage('analisis')">Análisis</div>
+  <div class="nav-tab" onclick="showPage('configuracion')">Configuración</div>
 </nav>
 
 <!-- NAVEGACIÓN MOBILE -->
@@ -340,6 +341,7 @@
     <div class="mobile-nav-item" onclick="showPage('mapaCalor')"><span class="mn-icon">🌡️</span>Calor</div>
     <div class="mobile-nav-item" onclick="showPage('mensual')"><span class="mn-icon">📅</span>Mensual</div>
     <div class="mobile-nav-item" onclick="showPage('analisis')"><span class="mn-icon">📊</span>Análisis</div>
+    <div class="mobile-nav-item" onclick="showPage('configuracion')"><span class="mn-icon">⚙️</span>Config</div>
   </div>
 </div>
 
@@ -1609,6 +1611,16 @@ async function generarInformeCompleto() {
   }
 }
 
+// ---- CONFIGURACIÓN ----
+async function cargarConfigStats() {
+  document.getElementById('configTotalParq').textContent = parquimetros.length;
+  document.getElementById('configTotalBat').textContent = baterias.length;
+  // Get total cambios count
+  const res = await fetch(`${API}/cambios`);
+  const data = await res.json();
+  document.getElementById('configTotalCambios').textContent = data.length;
+}
+
 // ---- RESET TOTAL ----
 function confirmarReset() {
   document.getElementById('resetPassword').value = '';
@@ -1656,7 +1668,7 @@ async function ejecutarReset() {
   renderBaterias();
   renderCargadores();
   renderEstadoActual();
-
+  cargarConfigStats();
   alert('✅ Todos los registros fueron borrados correctamente.');
 }
 
@@ -2563,6 +2575,7 @@ function showPage(name) {
   if (name === 'mensual') cargarMensual();
   if (name === 'mapa') iniciarMapa();
   if (name === 'mapaCalor') iniciarMapaCalor();
+  if (name === 'configuracion') cargarConfigStats();
   window.scrollTo(0, 0);
 }
 
@@ -2721,16 +2734,26 @@ init();
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<!-- ==================== RESET ==================== -->
-<div style="padding: 40px 32px 60px; max-width: 1200px; margin: 0 auto;">
-  <div style="border-top: 1px solid var(--border); padding-top: 32px;">
-    <div style="background: rgba(239,68,68,.06); border: 1px solid rgba(239,68,68,.2); border-radius: var(--radius); padding: 20px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px;">
-      <div>
-        <div style="font-size:14px; font-weight:700; color:var(--red); margin-bottom:4px;">⚠ Zona de peligro</div>
-        <div style="font-size:13px; color:var(--muted);">Borra todos los cambios y baterías. Los parquímetros y coordenadas se mantienen.</div>
-      </div>
-      <button class="btn" style="background:var(--red);color:#fff;font-weight:700;" onclick="confirmarReset()">🗑 Borrar todos los registros</button>
-    </div>
+<!-- ==================== CONFIGURACIÓN ==================== -->
+<div id="page-configuracion" class="page">
+  <div class="section-header">
+    <h2>Configuración</h2>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Sistema</div>
+    <div style="font-size:14px; color:var(--muted); margin-bottom:6px;">Versión de la base de datos: <strong style="color:var(--text)">Supabase</strong></div>
+    <div style="font-size:14px; color:var(--muted);">Parquímetros cargados: <strong style="color:var(--text)" id="configTotalParq">—</strong></div>
+    <div style="font-size:14px; color:var(--muted); margin-top:4px;">Baterías cargadas: <strong style="color:var(--text)" id="configTotalBat">—</strong></div>
+    <div style="font-size:14px; color:var(--muted); margin-top:4px;">Total cambios registrados: <strong style="color:var(--text)" id="configTotalCambios">—</strong></div>
+  </div>
+
+  <div class="card" style="border-color:rgba(239,68,68,.3); background:rgba(239,68,68,.04);">
+    <div class="card-title" style="color:var(--red);">Zona de peligro</div>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:16px;">
+      Borra <strong style="color:var(--text)">todos los cambios y baterías</strong> dejando la herramienta desde cero. Los parquímetros y sus coordenadas se mantienen. Esta acción no se puede deshacer.
+    </p>
+    <button class="btn" style="background:var(--red);color:#fff;font-weight:700;" onclick="confirmarReset()">🗑 Borrar todos los registros</button>
   </div>
 </div>
 
