@@ -1609,6 +1609,57 @@ async function generarInformeCompleto() {
   }
 }
 
+// ---- RESET TOTAL ----
+function confirmarReset() {
+  document.getElementById('resetPassword').value = '';
+  document.getElementById('alertReset').innerHTML = '';
+  document.getElementById('modalReset').classList.add('open');
+  setTimeout(() => document.getElementById('resetPassword').focus(), 100);
+}
+
+function cerrarModalReset() {
+  document.getElementById('modalReset').classList.remove('open');
+}
+
+async function ejecutarReset() {
+  const password = document.getElementById('resetPassword').value;
+  const btn = document.querySelector('#modalReset .btn[onclick="ejecutarReset()"]');
+  btn.textContent = 'Borrando...';
+  btn.disabled = true;
+
+  const res = await fetch(`${API}/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+  const data = await res.json();
+
+  if (!res.ok) {
+    document.getElementById('alertReset').innerHTML = `<div class="alert alert-error">${data.error || 'Error al borrar'}</div>`;
+    btn.textContent = 'Confirmar borrado';
+    btn.disabled = false;
+    return;
+  }
+
+  // Reset local state
+  baterias = [];
+  cambiosDia = [];
+  statsBaterias = [];
+  statsParquimetros = [];
+  cargadores = [];
+  estadoActual = [];
+
+  cerrarModalReset();
+  await cargarBaterias();
+  await cargarCambiosDia();
+  await cargarCargadores();
+  renderBaterias();
+  renderCargadores();
+  renderEstadoActual();
+
+  alert('✅ Todos los registros fueron borrados correctamente.');
+}
+
 // ---- INIT ----
 async function init() {
   document.getElementById('fechaDia').value = hoy();
@@ -2670,5 +2721,35 @@ init();
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- ==================== RESET ==================== -->
+<div style="padding: 40px 32px 60px; max-width: 1200px; margin: 0 auto;">
+  <div style="border-top: 1px solid var(--border); padding-top: 32px;">
+    <div style="background: rgba(239,68,68,.06); border: 1px solid rgba(239,68,68,.2); border-radius: var(--radius); padding: 20px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px;">
+      <div>
+        <div style="font-size:14px; font-weight:700; color:var(--red); margin-bottom:4px;">⚠ Zona de peligro</div>
+        <div style="font-size:13px; color:var(--muted);">Borra todos los cambios y baterías. Los parquímetros y coordenadas se mantienen.</div>
+      </div>
+      <button class="btn" style="background:var(--red);color:#fff;font-weight:700;" onclick="confirmarReset()">🗑 Borrar todos los registros</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL RESET -->
+<div class="modal-overlay" id="modalReset">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title" style="color:var(--red)">⚠ Confirmar borrado total</div>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:18px;">Esta acción borra <strong style="color:var(--text)">todos los cambios, baterías y cargadores</strong>. No se puede deshacer.</p>
+    <div class="form-group" style="margin-bottom:18px">
+      <label>Contraseña de confirmación</label>
+      <input type="password" id="resetPassword" placeholder="Ingresá la contraseña" onkeydown="if(event.key==='Enter') ejecutarReset()">
+    </div>
+    <div id="alertReset"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarModalReset()">Cancelar</button>
+      <button class="btn" style="background:var(--red);color:#fff;font-weight:700;" onclick="ejecutarReset()">Confirmar borrado</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

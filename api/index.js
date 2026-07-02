@@ -170,15 +170,26 @@ export default async function handler(req, res) {
   // ---- STATS: BATERÍAS ----
   if (path === '/stats/baterias' && req.method === 'GET') {
     const { data: bats } = await supabase.from('baterias').select('*');
-    const { data: cambios } = await supabase.from('cambios').select('*').order('fecha');
     const { data: parqs } = await supabase.from('parquimetros').select('id,direccion');
     const parqMap = {};
     for (const p of (parqs || [])) parqMap[p.id] = p.direccion;
+
+    // Paginated fetch of all cambios
+    let cambios = [];
+    let from = 0;
+    while (true) {
+      const { data } = await supabase.from('cambios').select('*').order('fecha').range(from, from + 999);
+      if (!data || data.length === 0) break;
+      cambios = cambios.concat(data);
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+
     const result = (bats || []).map(bat => {
-      const entraEvents = (cambios || []).filter(c => c.bateria_entra_id === bat.id);
-      const saleEvents  = (cambios || []).filter(c => c.bateria_sale_id  === bat.id);
+      const entraEvents = cambios.filter(c => c.bateria_entra_id === bat.id);
+      const saleEvents  = cambios.filter(c => c.bateria_sale_id  === bat.id);
       const estadias = entraEvents.map(entrada => {
-        const salida = (cambios || [])
+        const salida = cambios
           .filter(c => c.bateria_sale_id === bat.id && c.parquimetro_id === entrada.parquimetro_id && c.fecha >= entrada.fecha)
           .sort((a,b) => a.fecha.localeCompare(b.fecha))[0];
         const dias = salida ? Math.round((new Date(salida.fecha) - new Date(entrada.fecha)) / 86400000) : null;
@@ -192,9 +203,19 @@ export default async function handler(req, res) {
   // ---- STATS: PARQUÍMETROS ----
   if (path === '/stats/parquimetros' && req.method === 'GET') {
     const { data: parqs } = await supabase.from('parquimetros').select('*').order('id');
-    const { data: cambios } = await supabase.from('cambios').select('*').order('fecha');
+
+    let cambios = [];
+    let from = 0;
+    while (true) {
+      const { data } = await supabase.from('cambios').select('*').order('fecha').range(from, from + 999);
+      if (!data || data.length === 0) break;
+      cambios = cambios.concat(data);
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+
     const result = (parqs || []).map(parq => {
-      const cc = (cambios || []).filter(c => c.parquimetro_id === parq.id).sort((a,b) => a.fecha.localeCompare(b.fecha));
+      const cc = cambios.filter(c => c.parquimetro_id === parq.id).sort((a,b) => a.fecha.localeCompare(b.fecha));
       const duraciones = [];
       for (let i = 1; i < cc.length; i++) duraciones.push(Math.round((new Date(cc[i].fecha) - new Date(cc[i-1].fecha)) / 86400000));
       const promDias = duraciones.length ? Math.round(duraciones.reduce((a,b)=>a+b,0)/duraciones.length) : null;
@@ -209,29 +230,62 @@ export default async function handler(req, res) {
     const anio = parseInt(query.anio);
     const mes  = parseInt(query.mes);
     const diasEnMes = new Date(anio, mes, 0).getDate();
-    const prefijo = `${anio}-${String(mes).padStart(2,'0')}`;
-    const { data: cambios } = await supabase.from('cambios').select('*').like('fecha', `${prefijo}%`).order('fecha');
+    const fechaDesde = `${anio}-${String(mes).padStart(2,'0')}-01`;
+    const fechaHasta = `${anio}-${String(mes).padStart(2,'0')}-${String(diasEnMes).padStart(2,'0')}`;
+
+    // Use gte/lte instead of like to avoid date format issues
+    // Also fetch all pages (Supabase default limit is 1000)
+    let cambios = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data, error } = await supabase.from('cambios')
+        .select('*')
+        .gte('fecha', fechaDesde)
+        .lte('fecha', fechaHasta)
+        .order('fecha')
+        .range(from, from + pageSize - 1);
+      if (error) return json(res, { error: error.message }, 500);
+      if (!data || data.length === 0) break;
+      cambios = cambios.concat(data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+
     const { data: parqs } = await supabase.from('parquimetros').select('id,direccion').order('id');
     const { data: bats } = await supabase.from('baterias').select('id,numero');
     const batMap = {};
     for (const b of (bats || [])) batMap[b.id] = b.numero;
-    const parqIds = [...new Set((cambios || []).map(c => c.parquimetro_id))];
+
+    const parqIds = [...new Set(cambios.map(c => c.parquimetro_id))];
     const rows = parqIds.map(pid => {
       const parq = (parqs || []).find(p => p.id === pid);
       const dias = {};
       for (let d = 1; d <= diasEnMes; d++) {
         const fechaStr = `${anio}-${String(mes).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const cc = (cambios || []).filter(c => c.parquimetro_id === pid && c.fecha === fechaStr);
+        const cc = cambios.filter(c => c.parquimetro_id === pid && c.fecha === fechaStr);
         if (cc.length) dias[d] = cc.map(c => ({ entra: batMap[c.bateria_entra_id] || '?', sale: batMap[c.bateria_sale_id] || '?' }));
       }
-      return { id: pid, direccion: parq ? parq.direccion : '?', dias, totalCambios: (cambios || []).filter(c => c.parquimetro_id === pid).length };
+      return { id: pid, direccion: parq ? parq.direccion : '?', dias, totalCambios: cambios.filter(c => c.parquimetro_id === pid).length };
     });
+
     const totalesDia = {};
     for (let d = 1; d <= diasEnMes; d++) {
       const fechaStr = `${anio}-${String(mes).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      totalesDia[d] = (cambios || []).filter(c => c.fecha === fechaStr).length;
+      totalesDia[d] = cambios.filter(c => c.fecha === fechaStr).length;
     }
-    return json(res, { anio, mes, diasEnMes, rows, totalesDia, totalMes: (cambios || []).length });
+    return json(res, { anio, mes, diasEnMes, rows, totalesDia, totalMes: cambios.length });
+  }
+
+  // ---- RESET TOTAL ----
+  if (path === '/reset' && req.method === 'POST') {
+    const { password } = body;
+    if (password !== '1821') return json(res, { error: 'Contraseña incorrecta' }, 403);
+    // Delete all cambios, baterias, reset cargadores
+    await supabase.from('cambios').delete().neq('id', '');
+    await supabase.from('baterias').delete().neq('id', '');
+    await supabase.from('cargadores').update({ bateria_id: null, desde: null }).neq('cargador_num', 0);
+    return json(res, { ok: true });
   }
 
   return json(res, { error: 'Not found' }, 404);
