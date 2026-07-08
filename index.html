@@ -2245,8 +2245,10 @@ function parsearWsp() {
       // Extraer número de batería: primer grupo de 2-4 dígitos en la celda
       const extraerNum = (txt) => {
         if (!txt || !txt.trim()) return null;
-        const t = txt.trim().replace(/['']/g, '');  // quitar apóstrofes
-        // Ignorar celdas que no tienen número (texto puro, emojis, etc)
+        const t = txt.trim().replace(/['']/g, '').toLowerCase();
+        // Detectar SN / s/n / sin numero
+        if (/^s[\/\-]?n/i.test(t) || /^sin.?n[uú]m/i.test(t)) return 'SN';
+        // Primer grupo numérico de 2-4 dígitos
         const m = t.match(/^(\d{2,4})/);
         return m ? m[1] : null;
       };
@@ -2321,11 +2323,11 @@ function parsearWsp() {
     const matchParq  = clean.match(/[Pp]arqu[ií]metro\s*(\d{5})/);
     if (!matchParq) continue;
     const parqId     = parseInt(matchParq[1]);
-    const matchEntra = clean.match(/[Ee]ntra:\s*(\d{2,4})/);
-    const matchSale  = clean.match(/[Ss]ale:\s*(\d{2,4})/);
+    const matchEntra = clean.match(/[Ee]ntra:\s*(\d{2,4}|s[\/\-]?n|sn)/i);
+    const matchSale  = clean.match(/[Ss]ale:\s*(\d{2,4}|s[\/\-]?n|sn)/i);
     if (!matchEntra) continue;
-    const numEntra = matchEntra[1];
-    const numSale  = matchSale ? matchSale[1] : null;
+    const numEntra = /^s/i.test(matchEntra[1]) ? 'SN' : matchEntra[1];
+    const numSale  = matchSale ? (/^s/i.test(matchSale[1]) ? 'SN' : matchSale[1]) : null;
     const batEntra = baterias.find(b => b.numero === numEntra);
     const batSale  = numSale ? baterias.find(b => b.numero === numSale) : null;
     const parq     = parquimetros.find(p => p.id === parqId);
