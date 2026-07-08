@@ -2306,8 +2306,18 @@ function parsearWsp() {
 
   const fechaDia = document.getElementById('fechaDia').value;
   const resultados = [];
-  for (const msg of bloques) {
-    const clean = msg.replace(/\*/g, '').replace(/✅/g, '');
+
+  // For timestamp format, extract date from each block's header
+  for (let i = 0; i < bloques.length; i++) {
+    const msg = bloques[i];
+    // Remove WhatsApp formatting chars, emojis, and noisy lines like "Dirección:"
+    const clean = msg
+      .replace(/\*/g, '')
+      .replace(/✅/g, '')
+      .replace(/^Direcci[oó]n:.*$/gm, '')  // remove "Dirección:" lines
+      .replace(/^_\(.*\)_$/gm, '')         // remove _(texto)_ lines
+      .replace(/_/g, '');
+
     const matchParq  = clean.match(/[Pp]arqu[ií]metro\s*(\d{5})/);
     if (!matchParq) continue;
     const parqId     = parseInt(matchParq[1]);
@@ -2319,10 +2329,25 @@ function parsearWsp() {
     const batEntra = baterias.find(b => b.numero === numEntra);
     const batSale  = numSale ? baterias.find(b => b.numero === numSale) : null;
     const parq     = parquimetros.find(p => p.id === parqId);
+
+    // Extract date from timestamp in block (format [D/M, HH:MM] or [HH:MM, DD/MM/YYYY])
+    let fechaISO = fechaDia;
+    const tsMatch = msg.match(/^\[(\d{1,2})[\/:](\d{1,2})(?:[\/:](\d{4}))?[,\s]/);
+    if (tsMatch) {
+      if (tsMatch[3]) {
+        // [DD/MM/YYYY, HH:MM] format
+        fechaISO = `${tsMatch[3]}-${tsMatch[2].padStart(2,'0')}-${tsMatch[1].padStart(2,'0')}`;
+      } else {
+        // [D/M, HH:MM] format — use current year
+        const yr = new Date().getFullYear();
+        fechaISO = `${yr}-${tsMatch[2].padStart(2,'0')}-${tsMatch[1].padStart(2,'0')}`;
+      }
+    }
+
     resultados.push({
       parqId, parqDir: parq ? parq.direccion : null, parqOk: !!parq,
       numEntra, batEntra, numSale, batSale,
-      fechaISO: fechaDia,
+      fechaISO,
     });
   }
   renderWspPreview(resultados);
