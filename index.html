@@ -2332,18 +2332,34 @@ function parsearWsp() {
     const batSale  = numSale ? baterias.find(b => b.numero === numSale) : null;
     const parq     = parquimetros.find(p => p.id === parqId);
 
-    // Extract date from timestamp in block (format [D/M, HH:MM] or [HH:MM, DD/MM/YYYY])
+    // Extract date from WhatsApp timestamp
+    // Formats: [HH:MM, D/M/YYYY] or [D/M, HH:MM] or [HH:MM, DD/MM/YYYY]
     let fechaISO = fechaDia;
-    const tsMatch = msg.match(/^\[(\d{1,2})[\/:](\d{1,2})(?:[\/:](\d{4}))?[,\s]/);
-    if (tsMatch) {
-      if (tsMatch[3]) {
-        // [DD/MM/YYYY, HH:MM] format
-        fechaISO = `${tsMatch[3]}-${tsMatch[2].padStart(2,'0')}-${tsMatch[1].padStart(2,'0')}`;
-      } else {
-        // [D/M, HH:MM] format — use current year
-        const yr = new Date().getFullYear();
-        fechaISO = `${yr}-${tsMatch[2].padStart(2,'0')}-${tsMatch[1].padStart(2,'0')}`;
-      }
+    const firstLine = msg.split('\n')[0];
+
+    // Format 1: [H:MM, D/M/YYYY] — hora primero, coma, fecha con año
+    const fmt1 = firstLine.match(/^\[\d{1,2}:\d{2},\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\]/);
+    // Format 2: [D/M/YYYY, H:MM] — fecha con año primero
+    const fmt2 = firstLine.match(/^\[(\d{1,2})\/(\d{1,2})\/(\d{4}),\s*\d{1,2}:\d{2}\]/);
+    // Format 3: [H:MM, D/M] — hora primero, coma, dia/mes sin año
+    const fmt3 = firstLine.match(/^\[\d{1,2}:\d{2},\s*(\d{1,2})\/(\d{1,2})\]/);
+    // Format 4: [D/M, H:MM] — dia/mes sin año primero
+    const fmt4 = firstLine.match(/^\[(\d{1,2})\/(\d{1,2}),\s*\d{1,2}:\d{2}\]/);
+
+    if (fmt1) {
+      // [H:MM, D/M/YYYY]
+      fechaISO = `${fmt1[3]}-${fmt1[2].padStart(2,'0')}-${fmt1[1].padStart(2,'0')}`;
+    } else if (fmt2) {
+      // [D/M/YYYY, H:MM]
+      fechaISO = `${fmt2[3]}-${fmt2[2].padStart(2,'0')}-${fmt2[1].padStart(2,'0')}`;
+    } else if (fmt3) {
+      // [H:MM, D/M] — use current year
+      const yr = new Date().getFullYear();
+      fechaISO = `${yr}-${fmt3[2].padStart(2,'0')}-${fmt3[1].padStart(2,'0')}`;
+    } else if (fmt4) {
+      // [D/M, H:MM] — use current year
+      const yr = new Date().getFullYear();
+      fechaISO = `${yr}-${fmt4[2].padStart(2,'0')}-${fmt4[1].padStart(2,'0')}`;
     }
 
     resultados.push({
