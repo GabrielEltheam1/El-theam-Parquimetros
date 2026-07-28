@@ -1609,8 +1609,61 @@ async function generarInformeCompleto() {
   }
 }
 
+// ---- RESET MES ----
+const MESES_NOMBRES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function confirmarResetMes() {
+  const mes = parseInt(document.getElementById('resetMesMes').value);
+  const anio = parseInt(document.getElementById('resetMesAnio').value);
+  document.getElementById('modalResetMesNombre').textContent = `${MESES_NOMBRES[mes]} ${anio}`;
+  document.getElementById('resetMesPassword').value = '';
+  document.getElementById('alertResetMes').innerHTML = '';
+  document.getElementById('modalResetMes').classList.add('open');
+  setTimeout(() => document.getElementById('resetMesPassword').focus(), 100);
+}
+
+function cerrarModalResetMes() {
+  document.getElementById('modalResetMes').classList.remove('open');
+}
+
+async function ejecutarResetMes() {
+  const password = document.getElementById('resetMesPassword').value;
+  const mes  = parseInt(document.getElementById('resetMesMes').value);
+  const anio = parseInt(document.getElementById('resetMesAnio').value);
+  const btn = document.querySelector('#modalResetMes .btn[onclick="ejecutarResetMes()"]');
+  btn.textContent = 'Borrando...'; btn.disabled = true;
+
+  const res = await fetch(`${API}/reset-mes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password, anio, mes })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    document.getElementById('alertResetMes').innerHTML = `<div class="alert alert-error">${data.error || 'Error'}</div>`;
+    btn.textContent = 'Confirmar borrado'; btn.disabled = false;
+    return;
+  }
+  cerrarModalResetMes();
+  await cargarCambiosDia();
+  cargarConfigStats();
+  alert(`✅ Cambios de ${MESES_NOMBRES[mes]} ${anio} borrados correctamente.`);
+}
+
 // ---- CONFIGURACIÓN ----
 async function cargarConfigStats() {
+  // Populate year selector for reset-mes
+  const anioActual = new Date().getFullYear();
+  const selAnioReset = document.getElementById('resetMesAnio');
+  if (selAnioReset && !selAnioReset.options.length) {
+    for (let y = anioActual; y >= anioActual - 4; y--) {
+      selAnioReset.innerHTML += `<option value="${y}">${y}</option>`;
+    }
+  }
+  // Set current month
+  const mesActual = new Date().getMonth() + 1;
+  document.getElementById('resetMesMes').value = mesActual;
+
   document.getElementById('configTotalParq').textContent = parquimetros.length;
   document.getElementById('configTotalBat').textContent = baterias.length;
   // Get total cambios count
@@ -2284,16 +2337,57 @@ function parsearWsp() {
   let bloque = null;
 
   if (tieneTimestamps) {
+    // Store {text, fechaISO} pairs so we don't lose the timestamp date
+    const bloquesConFecha = [];
+    let bloqueActual = null;
+    let fechaActual = fechaDia;
+
     for (const linea of lineas) {
       const esHeader = /^\[\d{1,2}[\/,]\d{0,2},?\s*\d{1,2}:\d{2}\]|^\[\d{1,2}:\d{2},?\s*\d{1,2}\/\d{1,2}/.test(linea);
       if (esHeader) {
-        if (bloque !== null) bloques.push(bloque);
-        bloque = linea.replace(/^\[[\d\/,\s:]+\]\s*[^:]*:\s*/, '');
+        if (bloqueActual !== null) bloquesConFecha.push({ text: bloqueActual, fechaISO: fechaActual });
+
+        // Extract date from this header line
+        const f1 = linea.match(/^\[\d{1,2}:\d{2},\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\]/);
+        const f2 = linea.match(/^\[(\d{1,2})\/(\d{1,2})\/(\d{4}),\s*\d{1,2}:\d{2}\]/);
+        const f3 = linea.match(/^\[\d{1,2}:\d{2},\s*(\d{1,2})\/(\d{1,2})\]/);
+        const f4 = linea.match(/^\[(\d{1,2})\/(\d{1,2}),\s*\d{1,2}:\d{2}\]/);
+        const yr = new Date().getFullYear();
+
+        if (f1) fechaActual = `${f1[3]}-${f1[2].padStart(2,'0')}-${f1[1].padStart(2,'0')}`;
+        else if (f2) fechaActual = `${f2[3]}-${f2[2].padStart(2,'0')}-${f2[1].padStart(2,'0')}`;
+        else if (f3) fechaActual = `${yr}-${f3[2].padStart(2,'0')}-${f3[1].padStart(2,'0')}`;
+        else if (f4) fechaActual = `${yr}-${f4[2].padStart(2,'0')}-${f4[1].padStart(2,'0')}`;
+
+        bloqueActual = linea.replace(/^\[[\d\/,\s:]+\]\s*[^:]*:\s*/, '');
       } else {
-        if (bloque !== null) bloque += '\n' + linea;
+        if (bloqueActual !== null) bloqueActual += '\n' + linea;
       }
     }
-    if (bloque !== null) bloques.push(bloque);
+    if (bloqueActual !== null) bloquesConFecha.push({ text: bloqueActual, fechaISO: fechaActual });
+
+    // Process each block with its extracted date
+    for (const { text, fechaISO } of bloquesConFecha) {
+      const clean = text
+        .replace(/\*/g, '').replace(/✅/g, '')
+        .replace(/^Direcci[oó]n:.*$/gm, '')
+        .replace(/^_\(.*\)_$/gm, '').replace(/_/g, '');
+
+      const matchParq  = clean.match(/[Pp]arqu[ií]metro\s*(\d{5})/);
+      if (!matchParq) continue;
+      const parqId = parseInt(matchParq[1]);
+      const matchEntra = clean.match(/[Ee]ntra:\s*(\d{2,4}|s[\/\-]?n|sn)/i);
+      const matchSale  = clean.match(/[Ss]ale:\s*(\d{2,4}|s[\/\-]?n|sn)/i);
+      if (!matchEntra) continue;
+      const numEntra = /^s/i.test(matchEntra[1]) ? 'SN' : matchEntra[1];
+      const numSale  = matchSale ? (/^s/i.test(matchSale[1]) ? 'SN' : matchSale[1]) : null;
+      const batEntra = baterias.find(b => b.numero === numEntra);
+      const batSale  = numSale ? baterias.find(b => b.numero === numSale) : null;
+      const parq     = parquimetros.find(p => p.id === parqId);
+      resultados.push({ parqId, parqDir: parq ? parq.direccion : null, parqOk: !!parq, numEntra, batEntra, numSale, batSale, fechaISO });
+    }
+    renderWspPreview(resultados);
+    return;
   } else {
     for (const linea of lineas) {
       if (/^[Pp]arqu[ií]metro\s+\d{5}/.test(linea.trim())) {
@@ -2789,12 +2883,54 @@ init();
     <div style="font-size:14px; color:var(--muted); margin-top:4px;">Total cambios registrados: <strong style="color:var(--text)" id="configTotalCambios">—</strong></div>
   </div>
 
+  <div class="card" style="border-color:rgba(239,68,68,.2); background:rgba(239,68,68,.03);">
+    <div class="card-title" style="color:var(--yellow);">Borrar registros de un mes</div>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:14px;">
+      Borra todos los cambios de un mes específico. Los demás meses no se tocan.
+    </p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
+      <div class="form-group" style="min-width:120px; flex:0">
+        <label>Mes</label>
+        <select id="resetMesMes">
+          <option value="1">Enero</option><option value="2">Febrero</option>
+          <option value="3">Marzo</option><option value="4">Abril</option>
+          <option value="5">Mayo</option><option value="6">Junio</option>
+          <option value="7">Julio</option><option value="8">Agosto</option>
+          <option value="9">Septiembre</option><option value="10">Octubre</option>
+          <option value="11">Noviembre</option><option value="12">Diciembre</option>
+        </select>
+      </div>
+      <div class="form-group" style="min-width:100px; flex:0">
+        <label>Año</label>
+        <select id="resetMesAnio"></select>
+      </div>
+    </div>
+    <button class="btn" style="background:var(--yellow);color:#000;font-weight:700;" onclick="confirmarResetMes()">🗑 Borrar mes</button>
+  </div>
+
   <div class="card" style="border-color:rgba(239,68,68,.3); background:rgba(239,68,68,.04);">
     <div class="card-title" style="color:var(--red);">Zona de peligro</div>
     <p style="font-size:13px; color:var(--muted); margin-bottom:16px;">
       Borra <strong style="color:var(--text)">todos los cambios y baterías</strong> dejando la herramienta desde cero. Los parquímetros y sus coordenadas se mantienen. Esta acción no se puede deshacer.
     </p>
     <button class="btn" style="background:var(--red);color:#fff;font-weight:700;" onclick="confirmarReset()">🗑 Borrar todos los registros</button>
+  </div>
+</div>
+
+<!-- MODAL RESET MES -->
+<div class="modal-overlay" id="modalResetMes">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title" style="color:var(--yellow)">🗑 Confirmar borrado de mes</div>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:18px;">Se borrarán todos los cambios de <strong style="color:var(--text)" id="modalResetMesNombre"></strong>. Los otros meses no se modifican.</p>
+    <div class="form-group" style="margin-bottom:18px">
+      <label>Contraseña de confirmación</label>
+      <input type="password" id="resetMesPassword" placeholder="Ingresá la contraseña" onkeydown="if(event.key==='Enter') ejecutarResetMes()">
+    </div>
+    <div id="alertResetMes"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarModalResetMes()">Cancelar</button>
+      <button class="btn" style="background:var(--yellow);color:#000;font-weight:700;" onclick="ejecutarResetMes()">Confirmar borrado</button>
+    </div>
   </div>
 </div>
 

@@ -299,5 +299,21 @@ export default async function handler(req, res) {
     return json(res, { ok: true });
   }
 
+  // DELETE /api/reset-mes — borrar cambios de un mes específico
+  if (path === '/reset-mes' && req.method === 'POST') {
+    const { password, anio, mes } = body;
+    if (password !== '1821') return json(res, { error: 'Contraseña incorrecta' }, 403);
+    if (!anio || !mes) return json(res, { error: 'Faltan año y mes' }, 400);
+    const diasEnMes = new Date(anio, mes, 0).getDate();
+    const fechaDesde = `${anio}-${String(mes).padStart(2,'0')}-01`;
+    const fechaHasta = `${anio}-${String(mes).padStart(2,'0')}-${String(diasEnMes).padStart(2,'0')}`;
+    const { error } = await supabase.from('cambios')
+      .delete()
+      .gte('fecha', fechaDesde)
+      .lte('fecha', fechaHasta);
+    if (error) return json(res, { error: error.message }, 500);
+    return json(res, { ok: true, mes: `${String(mes).padStart(2,'0')}/${anio}` });
+  }
+
   return json(res, { error: 'Not found' }, 404);
 }
