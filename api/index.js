@@ -99,11 +99,29 @@ export default async function handler(req, res) {
 
   // ---- CAMBIOS ----
   if (path === '/cambios' && req.method === 'GET') {
-    let q = supabase.from('cambios').select('*').order('id');
-    if (query.fecha) q = q.eq('fecha', query.fecha);
-    const { data, error } = await q;
-    if (error) return json(res, { error: error.message }, 500);
-    return json(res, data.map(c => ({
+    // Si viene filtro de fecha, sin paginación (un día tiene pocos registros)
+    if (query.fecha) {
+      const { data, error } = await supabase.from('cambios').select('*').eq('fecha', query.fecha).order('id');
+      if (error) return json(res, { error: error.message }, 500);
+      return json(res, data.map(c => ({
+        id: c.id, fecha: c.fecha,
+        parquimetroId: c.parquimetro_id,
+        bateriaEntraId: c.bateria_entra_id,
+        bateriaSaleId: c.bateria_sale_id
+      })));
+    }
+    // Sin filtro de fecha: paginar para traer todos
+    let todos = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase.from('cambios').select('*').order('id').range(from, from + 999);
+      if (error) return json(res, { error: error.message }, 500);
+      if (!data || data.length === 0) break;
+      todos = todos.concat(data);
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+    return json(res, todos.map(c => ({
       id: c.id, fecha: c.fecha,
       parquimetroId: c.parquimetro_id,
       bateriaEntraId: c.bateria_entra_id,
